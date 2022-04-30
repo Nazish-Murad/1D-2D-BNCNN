@@ -1,0 +1,275 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from operator import itemgetter
+from dataset import *
+np.random.seed(19)
+import numpy as np
+from sklearn.model_selection import train_test_split
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+from keras.layers import *
+from keras.optimizers import Adam
+import os
+from keras.models import Model
+
+lr = 0.001
+beta_1 = 0.5
+
+def fn_mask(x):
+    from scipy.io import loadmat
+    mask = loadmat('mask.mat')['mask'].astype(np.float)
+    return multiply_constant(x, mask)
+
+from keras import backend
+backend.set_image_data_format('channels_first')
+print(backend.image_data_format())
+
+
+x0_20_1d = PHI_meas[key_1]
+y0_20_1d = MU[key_1]
+
+total_num_20_1d = x0_20_1d.shape[0]
+test_num_20_1d = 1000
+val_num_20_1d = 4000
+indices_20_1d = np.arange(total_num_20_1d)
+X_train_20_1d, x_test_20_1d, Y_train_20_1d, y_test_20_1d, id_train_20_1d, id_test_20_1d = train_test_split(x0_20_1d, y0_20_1d, indices_20_1d, test_size=test_num_20_1d, random_state=4)
+x_train_20_1d, x_val_20_1d, y_train_20_1d, y_val_20_1d,id_train_20_1d, id_val_20_1d = train_test_split(X_train_20_1d, Y_train_20_1d,id_train_20_1d, test_size=val_num_20_1d, random_state=3)
+x_train_20_1d = [x_train_20_1d]
+x_val_20_1d = [x_val_20_1d]
+x_test_20_1d = [x_test_20_1d]
+y_train_20_1d = [y_train_20_1d[:, [0]], y_train_20_1d[:, [1]]]
+y_val_20_1d = [y_val_20_1d[:, [0]], y_val_20_1d[:, [1]]]
+y_test_20_1d = [y_test_20_1d[:, [0]], y_test_20_1d[:, [1]]]
+
+PHI_meas_in_20_1d = PHI_meas[key_1]
+input_shape_20_1d = PHI_meas_in_20_1d.shape[1:]
+inputs_20_1d = [Input(input_shape_20_1d), Input((1,)), Input((1,))]
+# l = input_shape[-1]//2
+input_20_1d = Reshape((1,) + input_shape_20_1d)(inputs_20_1d[0])
+
+
+# =============================================================================
+# 
+# 1D BNCNN 
+# 
+# =============================================================================
+
+
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(input_20_1d)
+
+x = BatchNormalization(axis=1)(x)
+
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv1D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+
+x = Conv1D(8, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x.shape
+x = Flatten()(x)
+
+x = Dense(64,activation="softplus")(x)
+x = BatchNormalization(axis=1)(x)
+
+x = Dense(8192,activation="softplus")(x)
+x = BatchNormalization(axis=1)(x)
+x = Reshape((2,64,64))(x)
+
+split_1 = Lambda( lambda x: tf.split(x,num_or_size_splits=2,axis=1))(x)
+x_1 = BatchNormalization(axis=1)(split_1[0])
+# x_1 = BatchNormalization(axis=1)(x_1)
+# x1.shape
+x_2 = BatchNormalization(axis=1)(split_1[1])
+# x_2 = BatchNormalization(axis=1)(x_2)
+
+model_20_1d = tf.keras.Model(inputs=[inputs_20_1d], outputs=[x_1,x_2])
+model_20_1d.summary()
+
+model_name = 'model_20_1d'
+# folder_name = '/revision_test/0/'
+# os.makedirs(folder_name, exist_ok=True)
+print('model name: ' + model_name)
+checkpoint = ModelCheckpoint(model_name + '_{epoch:d}.h5', period=1)
+checkpoint.set_model(model_20_1d)
+checkpoint_weight = ModelCheckpoint(model_name + '_weights_{epoch:d}.h5', period=1, save_weights_only=True)
+checkpoint_weight.set_model(model_20_1d)
+# early_stop = EarlyStopping(monitor='val_1_loss', min_delta=0.1, patience=30, restore_best_weights=True, verbose=1)
+callbacks_20_1d = [TimeHistory(), checkpoint, checkpoint_weight]
+
+
+loss = 'mse'
+metrics = ['mae', 'mse', 'mape', 'msle', 'logcosh', 'cosine_similarity']
+model_20_1d.compile(loss=loss,loss_weights=[0,1], optimizer=Adam(lr=lr, beta_1=beta_1),metrics=metrics)
+
+
+history_20_1d = model_20_1d.fit(x_train_20_1d, y_train_20_1d, validation_data=(x_val_20_1d, y_val_20_1d), batch_size=32, epochs=50, verbose=2)
+# model_20_1d.save('model_20_1d.h5')
+
+
+# =============================================================================
+# 
+# 2D BNCNN 
+# 
+# =============================================================================
+
+
+x0_20_2d = PHI_meas_16x15[key_1]
+y0_20_2d = MU[key_1]
+
+total_num_20_2d = x0_20_2d.shape[0]
+test_num_20_2d = 1000
+val_num_20_2d = 4000
+indices_20_2d = np.arange(total_num_20_2d)
+
+X_train_20_2d, x_test_20_2d, Y_train_20_2d, y_test_20_2d, id_train_20_2d, id_test_20_2d = train_test_split(x0_20_2d, y0_20_2d, indices_20_2d, test_size=test_num_20_2d, random_state=4)
+x_train_20_2d, x_val_20_2d, y_train_20_2d, y_val_20_2d,id_train_20_2d, id_val_20_2d = train_test_split(X_train_20_2d, Y_train_20_2d,id_train_20_2d, test_size=val_num_20_2d, random_state=3)
+
+x_train_20_2d = [x_train_20_2d]
+x_val_20_2d = [x_val_20_2d]
+x_test_20_2d = [x_test_20_2d]
+y_train_20_2d = [y_train_20_2d[:, [0]], y_train_20_2d[:, [1]]]
+y_val_20_2d = [y_val_20_2d[:, [0]], y_val_20_2d[:, [1]]]
+y_test_20_2d = [y_test_20_2d[:, [0]], y_test_20_2d[:, [1]]]
+
+
+
+PHI_meas_in_20_2d = PHI_meas_16x15[key_1]
+input_shape_20_2d = PHI_meas_in_20_2d.shape[1:]
+inputs_20_2d = Input(input_shape_20_2d)
+# input_ = Reshape((1,) + input_shape)(inputs[0])
+inputs_20_2d.shape
+
+
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(inputs_20_2d)
+x.shape
+x = BatchNormalization(axis=1)(x)
+
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x = Conv2D(64, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+
+x = Conv2D(8, 3, padding='same',activation="softplus", data_format='channels_first')(x)
+x = BatchNormalization(axis=1)(x)
+x.shape
+x = Flatten()(x)
+x.shape
+x = Dense(64,activation="softplus")(x)
+# x = Dropout(0.2)(x)
+x = BatchNormalization(axis=1)(x)
+
+x = Dense(8192,activation="softplus")(x)
+# x = Dropout(0.2)(x)
+x = BatchNormalization(axis=1)(x)
+x = Reshape((2,64,64))(x)
+
+split_1 = Lambda( lambda x: tf.split(x,num_or_size_splits=2,axis=1))(x)
+x_1 = BatchNormalization(axis=1)(split_1[0])
+# x_1 = BatchNormalization(axis=1)(x_1)
+x_1.shape
+x_2 = BatchNormalization(axis=1)(split_1[1])
+# x_2 = BatchNormalization(axis=1)(x_2)
+
+model_20_2d = Model(inputs=inputs_20_2d, outputs=[x_1,x_2])
+print(model_20_2d.summary())
+
+# from keras.utils.vis_utils import plot_model
+
+# plot_model(model,show_shapes=True)
+
+
+
+model_name = 'model_20_2d'
+# folder_name = '/revision_test/0/'
+# os.makedirs(folder_name, exist_ok=True)
+print('model name: ' + model_name)
+checkpoint = ModelCheckpoint(model_name + '_{epoch:d}.h5', period=1)
+checkpoint.set_model(model_20_2d)
+checkpoint_weight = ModelCheckpoint(model_name + '_weights_{epoch:d}.h5', period=1, save_weights_only=True)
+checkpoint_weight.set_model(model_20_2d)
+# early_stop = EarlyStopping(monitor='val_1_loss', min_delta=0.1, patience=30, restore_best_weights=True, verbose=1)
+callbacks_20_2d = [TimeHistory(), checkpoint, checkpoint_weight]
+
+
+loss = 'mse'
+metrics = ['mae', 'mse', 'mape', 'msle', 'logcosh', 'cosine_similarity']
+model_20_2d.compile(loss=loss, optimizer=Adam(lr=lr, beta_1=beta_1),metrics=metrics)
+
+
+history_20_2d = model_20_2d.fit(x_train_20_2d, y_train_20_2d, validation_data=(x_val_20_2d, y_val_20_2d), batch_size=32, epochs=50, verbose=2)
+# model_20_2d.save('model_20_2d.h5')
+
+# =============================================================================
+# 
+# DenseNet (BPNN) 
+# 
+# =============================================================================
+
+PHI_meas_in_20_de = PHI_meas[key_1]
+input_shape_20_de = PHI_meas_in_20_de.shape[1:]
+inputs_20_de = Input(input_shape_20_de)
+# input_ = Reshape((1,) + input_shape)(inputs[0])
+inputs_20_de.shape
+
+x = Dense(1984,activation="tanh")(inputs_20_de)
+# x = Dropout(0.2)(x)
+# x = BatchNormalization(axis=1)(x)
+x.shape
+x = Dense(8192,activation="tanh")(x)
+# x = Dropout(0.2)(x)
+# x = BatchNormalization(axis=1)(x)
+x = Reshape((2,64,64))(x)
+
+split_1 = Lambda( lambda x: tf.split(x,num_or_size_splits=2,axis=1))(x)
+x_1 = split_1[0]
+# x_1 = BatchNormalization(axis=1)(x_1)
+x_1.shape
+x_2 = split_1[1]
+# x_2 = BatchNormalization(axis=1)(x_2)
+
+model_20_de = Model(inputs=inputs_20_de, outputs=[x_1,x_2])
+print(model_20_de.summary())
+
+from keras.utils.vis_utils import plot_model
+
+plot_model(model_20_de,show_shapes=True)
+
+model_name = 'model_20_de'
+# folder_name = '/revision_test/0/'
+# os.makedirs(folder_name, exist_ok=True)
+print('model name: ' + model_name)
+checkpoint = ModelCheckpoint(model_name + '_{epoch:d}.h5', period=1)
+checkpoint.set_model(model_20_de)
+checkpoint_weight = ModelCheckpoint(model_name + '_weights_{epoch:d}.h5', period=1, save_weights_only=True)
+checkpoint_weight.set_model(model_20_de)
+# early_stop = EarlyStopping(monitor='val_1_loss', min_delta=0.1, patience=30, restore_best_weights=True, verbose=1)
+callbacks_20_de = [TimeHistory(), checkpoint, checkpoint_weight]
+
+
+loss = 'mse'
+metrics = ['mae', 'mse', 'mape', 'msle', 'logcosh', 'cosine_similarity']
+model_20_de.compile(loss=loss, optimizer=Adam(lr=lr, beta_1=beta_1),metrics=metrics)
+
+
+history_20_de = model_20_de.fit(x_train_20_1d, y_train_20_1d, validation_data=(x_val_20_1d, y_val_20_1d), batch_size=32, epochs=50, verbose=2)
+# model_20_de.save('model_20_de.h5')
+
+
+
+
+
+
+
+
